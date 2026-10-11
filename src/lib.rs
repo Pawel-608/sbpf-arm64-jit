@@ -23,6 +23,8 @@ extern crate log;
 extern crate rand;
 extern crate thiserror;
 
+#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "aarch64"))]
+mod aarch64;
 pub mod aligned_memory;
 mod asm_parser;
 pub mod assembler;
@@ -37,7 +39,14 @@ pub mod insn_builder;
 pub mod interpreter;
 #[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
 pub mod jit;
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "aarch64"))]
+#[path = "jit_aarch64.rs"]
+pub mod jit;
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 mod memory_management;
 pub mod memory_region;
 pub mod program;

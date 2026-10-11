@@ -227,14 +227,26 @@ impl<T: Copy + PartialEq> FunctionRegistry<T> {
 /// Syscall handler function (ContextObject is derived from VM)
 pub type BuiltinFunction<C> = fn(EncryptedHostAddressToEbpfVm<C>, u64, u64, u64, u64, u64);
 /// Re-export of the JIT compiler for the declare_builtin_function! macro
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 pub type JitCompiler<'a, C> = crate::jit::JitCompiler<'a, C>;
 /// Re-export of the JIT compiler for the declare_builtin_function! macro
-#[cfg(not(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64")))]
+#[cfg(not(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
 pub struct JitCompiler<'a, C> {
     _phantom: std::marker::PhantomData<&'a C>,
 }
-#[cfg(not(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64")))]
+#[cfg(not(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
 impl<'a, C: ContextObject> JitCompiler<'a, C> {
     /// Dummy for declare_builtin_function!()
     #[allow(dead_code)]

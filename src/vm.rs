@@ -441,7 +441,11 @@ impl<'a, C: ContextObject> EbpfVm<'a, C> {
             match *mode {
                 ExecutionMode::Interpreted => {}
 
-                #[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+                #[cfg(all(
+                    feature = "jit",
+                    not(target_os = "windows"),
+                    any(target_arch = "x86_64", target_arch = "aarch64")
+                ))]
                 ExecutionMode::PreferJit => {
                     if let Some(compiled_program) = executable.get_compiled_program() {
                         *mode = ExecutionMode::Jit;
@@ -451,11 +455,15 @@ impl<'a, C: ContextObject> EbpfVm<'a, C> {
                 #[cfg(not(all(
                     feature = "jit",
                     not(target_os = "windows"),
-                    target_arch = "x86_64"
+                    any(target_arch = "x86_64", target_arch = "aarch64")
                 )))]
                 ExecutionMode::PreferJit => {}
 
-                #[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+                #[cfg(all(
+                    feature = "jit",
+                    not(target_os = "windows"),
+                    any(target_arch = "x86_64", target_arch = "aarch64")
+                ))]
                 ExecutionMode::Jit => {
                     let Some(compiled_program) = executable.get_compiled_program() else {
                         return (0, ProgramResult::Err(EbpfError::JitNotCompiled));
@@ -466,7 +474,7 @@ impl<'a, C: ContextObject> EbpfVm<'a, C> {
                 #[cfg(not(all(
                     feature = "jit",
                     not(target_os = "windows"),
-                    target_arch = "x86_64"
+                    any(target_arch = "x86_64", target_arch = "aarch64")
                 )))]
                 ExecutionMode::Jit => return (0, ProgramResult::Err(EbpfError::JitNotCompiled)),
             }
