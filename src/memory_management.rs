@@ -279,9 +279,95 @@ pub fn round_to_page_size(value: usize, page_size: usize) -> usize {
         .saturating_mul(page_size)
 }
 
+/// On Apple silicon executable memory has to be mapped with `MAP_JIT` (and is then RWX, with
+/// writes and execution toggled per thread through `pthread_jit_write_protect_np`).
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const MAP_JIT: libc::c_int = 0x0800;
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+extern "C" {
+    fn pthread_jit_write_protect_np(enabled: libc::c_int);
+    fn sys_icache_invalidate(start: *mut c_void, len: libc::size_t);
+}
+
+/// Makes the `MAP_JIT` pages of the calling thread writable (and not executable) while it lives.
+///
+/// Every other platform uses `mprotect` instead, so this is a no-op there.
+#[cfg(target_arch = "aarch64")]
+pub struct JitWriteGuard(());
+
+#[cfg(target_arch = "aarch64")]
+impl JitWriteGuard {
+    pub fn new() -> Self {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            pthread_jit_write_protect_np(0);
+        }
+        Self(())
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+impl Drop for JitWriteGuard {
+    fn drop(&mut self) {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            pthread_jit_write_protect_np(1);
+        }
+    }
+}
+
+/// Makes freshly written machine code visible to instruction fetch.
+///
+/// # Safety
+///
+/// `raw..raw + size_in_bytes` must be mapped memory.
+#[cfg(target_arch = "aarch64")]
+pub unsafe fn flush_instruction_cache(raw: *const u8, size_in_bytes: usize) {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        sys_icache_invalidate(raw as *mut c_void, size_in_bytes);
+    }
+    #[cfg(not(target_os = "macos"))]
+    unsafe {
+        // Same sequence as compiler-rt's __clear_cache for aarch64
+        let ctr_el0: u64;
+        std::arch::asm!("mrs {}, ctr_el0", out(reg) ctr_el0, options(nomem, nostack));
+        let dcache_line_size = 4usize << ((ctr_el0 >> 16) & 0xf);
+        let icache_line_size = 4usize << (ctr_el0 & 0xf);
+        let start = raw as usize;
+        let end = start.saturating_add(size_in_bytes);
+        let mut addr = start & !(dcache_line_size - 1);
+        while addr < end {
+            std::arch::asm!("dc cvau, {}", in(reg) addr, options(nostack));
+            addr = addr.saturating_add(dcache_line_size);
+        }
+        std::arch::asm!("dsb ish", options(nostack));
+        let mut addr = start & !(icache_line_size - 1);
+        while addr < end {
+            std::arch::asm!("ic ivau, {}", in(reg) addr, options(nostack));
+            addr = addr.saturating_add(icache_line_size);
+        }
+        std::arch::asm!("dsb ish", "isb", options(nostack));
+    }
+}
+
 pub unsafe fn allocate_pages(size_in_bytes: usize) -> Result<*mut u8, EbpfError> {
     let mut raw: *mut c_void = std::ptr::null_mut();
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    libc_error_guard!(
+        mmap,
+        &mut raw,
+        size_in_bytes,
+        libc::PROT_READ | libc::PROT_WRITE | libc::PROT_EXEC,
+        libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT,
+        -1,
+        0,
+    );
+    #[cfg(all(
+        not(target_os = "windows"),
+        not(all(target_os = "macos", target_arch = "aarch64"))
+    ))]
     libc_error_guard!(
         mmap,
         &mut raw,
@@ -327,7 +413,15 @@ pub unsafe fn protect_pages(
     size_in_bytes: usize,
     permissions: PagePermissions,
 ) -> Result<(), EbpfError> {
-    #[cfg(not(target_os = "windows"))]
+    // MAP_JIT pages can not be mprotect()-ed; W^X is enforced per thread by JitWriteGuard.
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    {
+        let _ = (raw, size_in_bytes, permissions);
+    }
+    #[cfg(all(
+        not(target_os = "windows"),
+        not(all(target_os = "macos", target_arch = "aarch64"))
+    ))]
     {
         let prot = match permissions {
             PagePermissions::Read => libc::PROT_READ,
