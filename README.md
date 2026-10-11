@@ -2,6 +2,12 @@
 
 SBPF virtual machine
 
+> **This is a fork, not upstream.** Branch `arm64-jit` adds an unofficial,
+> unaudited JIT for aarch64 (see [aarch64 JIT](#aarch64-jit-this-fork)). It is
+> meant for research and backtesting: replaying Solana programs on Apple
+> silicon and ARM Linux. Do not use it in a validator or anywhere consensus or
+> funds depend on it. Upstream is [anza-xyz/sbpf](https://github.com/anza-xyz/sbpf).
+
 [![Build Status](https://github.com/anza-xyz/sbpf/actions/workflows/main.yml/badge.svg)](https://github.com/anza-xyz/sbpf/actions/workflows/main.yml)
 [![Crates.io](https://img.shields.io/crates/v/solana-sbpf.svg)](https://crates.io/crates/solana-sbpf)
 
