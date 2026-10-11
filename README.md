@@ -37,6 +37,80 @@ available for each version.
 | Compatibility with eBPFv3 ISA | no | no  | no  | yes |
 
 
+## aarch64 JIT (this fork)
+
+The `arm64-jit` branch is v0.21.1 plus a JIT compiler for aarch64: Apple silicon
+macOS and Linux. The public API is the one of v0.21.1, so a program built
+against solana-sbpf 0.21.1 (agave, LiteSVM) picks it up through a patch:
+
+```toml
+[patch.crates-io]
+solana-sbpf = { git = "https://github.com/Pawel-608/sbpf-arm64-jit", branch = "arm64-jit" }
+```
+
+`ExecutionMode::PreferJit` / `Jit` and `Executable::jit_compile()` now work on
+aarch64 as they do on x86-64.
+
+### How it works
+
+- `src/jit_aarch64.rs` is compiled as `solana_sbpf::jit` on aarch64. It is a
+  port of the x86-64 JIT (`src/jit.rs`, unchanged): the same subroutines
+  (anchors), the same instruction meter technique and the same exception
+  paths, so results, errors, final pc and instruction counts match the
+  interpreter (and the x86-64 JIT).
+- `src/aarch64.rs` is the upstream ARM64 emitter stage (anza-xyz/sbpf #490,
+  #510), extended with the instructions the JIT needs.
+- BPF r0..r9 live in the callee saved X19..X28; r10, the VM pointer and the
+  instruction meter live in caller saved registers that are saved around calls
+  into Rust (syscalls, `MemoryMapping::load`/`store`). A trampoline at the
+  start of the generated code enters it; X29 keeps a valid frame record.
+- Executable memory: on macOS the pages are mapped with `MAP_JIT` and written
+  between `pthread_jit_write_protect_np(0)` and `(1)` (W^X per thread), then
+  `sys_icache_invalidate`. On Linux: `mmap`, `mprotect` and the
+  `DC CVAU`/`IC IVAU` cache maintenance sequence.
+- Not ported because they never change results: the random no-op padding
+  (`Config::noop_instruction_rate`) and the immediate value sanitization
+  (`Config::sanitize_user_provided_values`).
+- Shared with the x86-64 JIT: the meter is checked at branches and
+  checkpoints, so when a program runs out of budget the JIT may have executed
+  a few more instructions of a linear run than the interpreter before it
+  reports `ExceededMaxInstructions`. Result, pc and instruction count agree;
+  memory written after the budget ran out may differ.
+
+### Tests
+
+`cargo test --release` runs the whole suite (tests/execution.rs and
+tests/exercise_instructions.rs run every program in the interpreter and the
+JIT and compare results, instruction counts, final pc and register traces).
+`tests/jit_differential.rs` generates random verifier-valid programs for every
+SBPF version (ALU, PQR, endianness, loads and stores to input, stack, heap and
+bytecode, branches and loops, calls, callx, syscalls that charge compute units,
+fail or write memory) with random configs and compares result, instruction
+count, final pc, remaining budget, register trace and all memory. It also runs
+a program whose machine code is larger than the reach of conditional branches.
+
+```sh
+JIT_DIFF_ITERATIONS=200000 cargo test --release --test jit_differential -- --nocapture
+cd fuzz && cargo +nightly fuzz run smarter-jit-diff -- -max_total_time=180
+```
+
+### Benchmark
+
+`cargo run --release --example jit_vs_interpreter`, millions of BPF
+instructions per second (best of 5):
+
+| program                            | interpreter | JIT   | speedup |
+|------------------------------------|------------:|------:|--------:|
+| alu (xorshift, mul, div)           |         470 | 9,406 |   20.0x |
+| memory (input loads, stack stores) |         292 |   536 |    1.8x |
+| calls (recursive fibonacci)        |         310 | 4,023 |   13.0x |
+| branchy (collatz lengths)          |         349 | 3,049 |    8.7x |
+
+Apple M4 Max, macOS 15. Linux aarch64 (a VM on the same machine) gives the
+same speedups (20.0x, 2.3x, 13.3x, 8.3x). Loads and stores call
+`MemoryMapping::load`/`store` like the x86-64 JIT does, so memory heavy code
+gains the least.
+
 ## Link to the crate
 
 This crate is available from [crates.io](https://crates.io/crates/solana-sbpf),
