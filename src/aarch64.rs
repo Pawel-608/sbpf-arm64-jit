@@ -32,6 +32,8 @@ pub const X12: u8 = 12;
 pub const X13: u8 = 13;
 pub const X14: u8 = 14;
 pub const X15: u8 = 15;
+pub const X16: u8 = 16; // IP0
+pub const X17: u8 = 17; // IP1
 
 // There are more registers, but I'm not sure we have a use for them
 // NOTE: x18 is reserved on Apple platforms
@@ -129,6 +131,46 @@ pub enum ARM64Instruction {
     Load(ARM64InstructionLoadStore),
     Store(ARM64InstructionLoadStore),
     RET,
+    BR(ARM64InstructionBLR),
+    CompareAndBranch(ARM64InstructionCompareAndBranch),
+    TestAndBranch(ARM64InstructionTestAndBranch),
+    PcRelativeAddress(ARM64InstructionPcRelativeAddress),
+    LoadPair(ARM64InstructionLoadStorePair),
+    StorePair(ARM64InstructionLoadStorePair),
+}
+
+/// CBZ / CBNZ
+#[derive(Copy, Clone)]
+pub struct ARM64InstructionCompareAndBranch {
+    pub size: OperandSize,
+    pub non_zero: bool, // CBNZ if set
+    pub reg: u8,        // Rt, 5 bits
+    pub imm19: i32,     // offset from current instruction, divided by 4
+}
+
+/// TBZ / TBNZ
+#[derive(Copy, Clone)]
+pub struct ARM64InstructionTestAndBranch {
+    pub non_zero: bool, // TBNZ if set
+    pub bit: u8,        // 0..63
+    pub reg: u8,        // Rt, 5 bits
+    pub imm14: i32,     // offset from current instruction, divided by 4
+}
+
+/// ADR
+#[derive(Copy, Clone)]
+pub struct ARM64InstructionPcRelativeAddress {
+    pub dest: u8,   // Rd, 5 bits
+    pub imm21: i32, // byte offset from current instruction
+}
+
+/// LDP / STP (64 bit registers)
+#[derive(Copy, Clone)]
+pub struct ARM64InstructionLoadStorePair {
+    pub data1: u8,               // Rt, 5 bits
+    pub data2: u8,               // Rt2, 5 bits
+    pub base: u8,                // Rn, 5 bits (SP if 31)
+    pub mem: ARM64MemoryOperand, // Offset (signed offset), OffsetPreIndex or OffsetPostIndex; byte offsets, multiples of 8
 }
 
 #[derive(Copy, Clone)]
@@ -425,6 +467,51 @@ impl ARM64Instruction {
             }
             ARM64Instruction::RET => {
                 ins = 0xd65f03c0;
+            }
+            ARM64Instruction::BR(s) => {
+                ins |= 0b11010110000111110000000000000000u32;
+                ins |= ((s.target & 0b11111) as u32) << 5;
+            }
+            ARM64Instruction::CompareAndBranch(s) => {
+                ins |= (s.reg & 0b11111) as u32;
+                ins |= ((s.imm19 as u32) & ((1u32 << 19) - 1u32)) << 5;
+                ins |= (s.non_zero as u32) << 24;
+                ins |= 0b011010u32 << 25;
+                if let OperandSize::S64 = s.size {
+                    ins |= 1u32 << 31;
+                }
+            }
+            ARM64Instruction::TestAndBranch(s) => {
+                ins |= (s.reg & 0b11111) as u32;
+                ins |= ((s.imm14 as u32) & ((1u32 << 14) - 1u32)) << 5;
+                ins |= ((s.bit & 0b11111) as u32) << 19;
+                ins |= (s.non_zero as u32) << 24;
+                ins |= 0b011011u32 << 25;
+                ins |= (((s.bit >> 5) & 1) as u32) << 31;
+            }
+            ARM64Instruction::PcRelativeAddress(s) => {
+                ins |= (s.dest & 0b11111) as u32;
+                ins |= (((s.imm21 as u32) >> 2) & ((1u32 << 19) - 1u32)) << 5;
+                ins |= ((s.imm21 as u32) & 0b11) << 29;
+                ins |= 0b10000u32 << 24;
+            }
+            ARM64Instruction::LoadPair(s) | ARM64Instruction::StorePair(s) => {
+                ins |= (s.data1 & 0b11111) as u32;
+                ins |= ((s.base & 0b11111) as u32) << 5;
+                ins |= ((s.data2 & 0b11111) as u32) << 10;
+                let (offset, mode) = match s.mem {
+                    ARM64MemoryOperand::Offset(offset) => (offset, 0b10u32),
+                    ARM64MemoryOperand::OffsetPreIndex(offset) => (offset, 0b11u32),
+                    ARM64MemoryOperand::OffsetPostIndex(offset) => (offset, 0b01u32),
+                    _ => panic!("unsupported addressing mode for a register pair"),
+                };
+                debug_assert!(offset % 8 == 0 && (-512..512).contains(&offset));
+                ins |= (((offset / 8) as u32) & 0b1111111) << 15;
+                if matches!(self, ARM64Instruction::LoadPair(_)) {
+                    ins |= 1u32 << 22;
+                }
+                ins |= mode << 23;
+                ins |= 0b10101u32 << 27; // opc = 10 (64 bit), V = 0
             }
             ARM64Instruction::Load(s) | ARM64Instruction::Store(s) => {
                 ins |= (s.data & 0b11111) as u32;
@@ -998,6 +1085,165 @@ impl ARM64Instruction {
             src1,
             src2,
             ..ARM64InstructionDataProcessing::default()
+        })
+    }
+
+    /// Unsigned multiply high (64 bit only)
+    #[must_use]
+    pub fn umulh(src1: u8, src2: u8, destination: u8) -> Self {
+        Self::DataProcessing3Src(ARM64InstructionDataProcessing {
+            size: OperandSize::S64,
+            opcode: 0b110,
+            dest: destination,
+            src1,
+            src2,
+            src3: SP_XZR,
+            o0: 0,
+        })
+    }
+
+    /// Signed multiply high (64 bit only)
+    #[must_use]
+    pub fn smulh(src1: u8, src2: u8, destination: u8) -> Self {
+        Self::DataProcessing3Src(ARM64InstructionDataProcessing {
+            size: OperandSize::S64,
+            opcode: 0b010,
+            dest: destination,
+            src1,
+            src2,
+            src3: SP_XZR,
+            o0: 0,
+        })
+    }
+
+    /// destination = src1 * src2
+    #[must_use]
+    pub fn mul(size: OperandSize, src1: u8, src2: u8, destination: u8) -> Self {
+        Self::madd(size, src1, src2, SP_XZR, destination)
+    }
+
+    /// UBFM (64 bit if size is S64, 32 bit otherwise)
+    #[must_use]
+    pub fn ubfm(size: OperandSize, source: u8, immr: u8, imms: u8, destination: u8) -> Self {
+        let n = matches!(size, OperandSize::S64) as u8;
+        Self::BitfieldImm(ARM64InstructionLogicalImm {
+            size,
+            opcode: 2,
+            n,
+            immr,
+            imms,
+            dest: destination,
+            src: source,
+        })
+    }
+
+    /// SBFM (64 bit if size is S64, 32 bit otherwise)
+    #[must_use]
+    pub fn sbfm(size: OperandSize, source: u8, immr: u8, imms: u8, destination: u8) -> Self {
+        let n = matches!(size, OperandSize::S64) as u8;
+        Self::BitfieldImm(ARM64InstructionLogicalImm {
+            size,
+            opcode: 0,
+            n,
+            immr,
+            imms,
+            dest: destination,
+            src: source,
+        })
+    }
+
+    /// Move wide with zero
+    #[must_use]
+    pub fn movz(destination: u8, shift_16: u8, immediate: u16) -> Self {
+        debug_assert!((0..4).contains(&shift_16));
+        Self::MovWideImm(ARM64InstructionWideImm {
+            size: OperandSize::S64,
+            dest: destination,
+            hw: shift_16,
+            imm16: immediate,
+            opcode: 2,
+        })
+    }
+
+    /// Move to or from SP (ADD Rd, Rn, #0)
+    #[must_use]
+    pub fn mov_sp(source: u8, destination: u8) -> Self {
+        Self::add_imm(OperandSize::S64, source, 0, destination)
+    }
+
+    /// Compare negative: flags of (src + imm12)
+    #[must_use]
+    pub fn cmn_imm(size: OperandSize, src: u8, imm12: u16) -> Self {
+        debug_assert!(imm12 < (1u16 << 12));
+        Self::AddSubImm(ARM64InstructionAddSubImm {
+            size,
+            opcode: 0,
+            sets_flags: 1,
+            dest: SP_XZR,
+            src,
+            imm12,
+            ..ARM64InstructionAddSubImm::default()
+        })
+    }
+
+    /// Indirect jump
+    #[must_use]
+    pub fn br(target: u8) -> Self {
+        Self::BR(ARM64InstructionBLR { target })
+    }
+
+    /// Compare and branch on zero / non-zero
+    // WARNING: You need to divide the byte offset by 4 before passing as imm19
+    #[must_use]
+    pub fn cbz(size: OperandSize, reg: u8, non_zero: bool, imm19: i32) -> Self {
+        Self::CompareAndBranch(ARM64InstructionCompareAndBranch {
+            size,
+            non_zero,
+            reg,
+            imm19,
+        })
+    }
+
+    /// Test bit and branch on zero / non-zero
+    // WARNING: You need to divide the byte offset by 4 before passing as imm14
+    #[must_use]
+    pub fn tbz(reg: u8, bit: u8, non_zero: bool, imm14: i32) -> Self {
+        Self::TestAndBranch(ARM64InstructionTestAndBranch {
+            non_zero,
+            bit,
+            reg,
+            imm14,
+        })
+    }
+
+    /// Form a PC relative address (byte offset)
+    #[must_use]
+    pub fn adr(destination: u8, imm21: i32) -> Self {
+        Self::PcRelativeAddress(ARM64InstructionPcRelativeAddress {
+            dest: destination,
+            imm21,
+        })
+    }
+
+    /// Load a pair of 64 bit registers
+    #[must_use]
+    pub fn ldp(data1: u8, data2: u8, base: u8, mem: ARM64MemoryOperand) -> Self {
+        Self::LoadPair(ARM64InstructionLoadStorePair {
+            data1,
+            data2,
+            base,
+            mem,
+        })
+    }
+
+    /// Store a pair of 64 bit registers
+    #[must_use]
+    pub fn stp(data1: u8, data2: u8, base: u8, mem: ARM64MemoryOperand) -> Self {
+        Self::StorePair(ARM64InstructionLoadStorePair {
+            data1,
+            data2,
+            base,
+            mem,
         })
     }
 
