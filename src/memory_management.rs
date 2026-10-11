@@ -337,13 +337,13 @@ pub unsafe fn flush_instruction_cache(raw: *const u8, size_in_bytes: usize) {
         let icache_line_size = 4usize << (ctr_el0 & 0xf);
         let start = raw as usize;
         let end = start.saturating_add(size_in_bytes);
-        let mut addr = start & !(dcache_line_size - 1);
+        let mut addr = start & !dcache_line_size.wrapping_sub(1);
         while addr < end {
             std::arch::asm!("dc cvau, {}", in(reg) addr, options(nostack));
             addr = addr.saturating_add(dcache_line_size);
         }
         std::arch::asm!("dsb ish", options(nostack));
-        let mut addr = start & !(icache_line_size - 1);
+        let mut addr = start & !icache_line_size.wrapping_sub(1);
         while addr < end {
             std::arch::asm!("ic ivau, {}", in(reg) addr, options(nostack));
             addr = addr.saturating_add(icache_line_size);

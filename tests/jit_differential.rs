@@ -347,7 +347,7 @@ impl Generator {
         };
         let v = self.version;
         let opc = if v.move_memory_instruction_classes() {
-            let class = if !store {
+            if !store {
                 [
                     ebpf::LD_1B_REG,
                     ebpf::LD_2B_REG,
@@ -368,8 +368,7 @@ impl Generator {
                     ebpf::ST_4B_IMM,
                     ebpf::ST_8B_IMM,
                 ][size_index]
-            };
-            class
+            }
         } else if !store {
             [
                 ebpf::LD_B_REG,
@@ -848,7 +847,7 @@ fn seed() -> u64 {
     std::env::var("JIT_DIFF_SEED")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(0x5eed_a64_u64)
+        .unwrap_or(0x05ee_da64_u64)
 }
 
 fn differential(version: SBPFVersion) {

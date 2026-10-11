@@ -505,7 +505,7 @@ impl ARM64Instruction {
                     ARM64MemoryOperand::OffsetPostIndex(offset) => (offset, 0b01u32),
                     _ => panic!("unsupported addressing mode for a register pair"),
                 };
-                debug_assert!(offset % 8 == 0 && (-512..512).contains(&offset));
+                debug_assert!(offset & 7 == 0 && (-512..512).contains(&offset));
                 ins |= (((offset / 8) as u32) & 0b1111111) << 15;
                 if matches!(self, ARM64Instruction::LoadPair(_)) {
                     ins |= 1u32 << 22;

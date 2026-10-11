@@ -942,13 +942,13 @@ impl<'a, C: ContextObject> JitCompiler<'a, C> {
 
     fn emit_ldr_vm(&mut self, destination: u8, slot: RuntimeEnvironmentSlot, offset: usize) {
         let offset = self.slot_in_vm(slot) + offset;
-        debug_assert!(offset % 8 == 0 && offset < 8 * 4096);
+        debug_assert!(offset & 7 == 0 && offset < 8 * 4096);
         self.emit_ins(ARM64Instruction::load(OperandSize::S64, REGISTER_PTR_TO_VM, ARM64MemoryOperand::OffsetScaled((offset / 8) as u16), destination));
     }
 
     fn emit_str_vm(&mut self, source: u8, slot: RuntimeEnvironmentSlot, offset: usize) {
         let offset = self.slot_in_vm(slot) + offset;
-        debug_assert!(offset % 8 == 0 && offset < 8 * 4096);
+        debug_assert!(offset & 7 == 0 && offset < 8 * 4096);
         self.emit_ins(ARM64Instruction::store(OperandSize::S64, source, REGISTER_PTR_TO_VM, ARM64MemoryOperand::OffsetScaled((offset / 8) as u16)));
     }
 
