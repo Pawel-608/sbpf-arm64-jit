@@ -338,7 +338,7 @@ macro_rules! test_interpreter_and_jit {
                 vm.register_trace.clone(),
             )
         };
-        #[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+        #[cfg(all(feature = "jit", not(target_os = "windows"), any(target_arch = "x86_64", target_arch = "aarch64")))]
         {
             context_object.remaining = original_budget;
             #[allow(unused_mut)]

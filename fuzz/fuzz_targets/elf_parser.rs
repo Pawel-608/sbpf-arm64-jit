@@ -26,10 +26,7 @@ fuzz_target!(|prog: &[u8]| {
     let loader = Arc::new(BuiltinProgram::new_loader(config));
 
     #[allow(unused_mut)]
-    let Ok(mut executable) = Executable::<TestContextObject>::from_elf(
-        &prog,
-        loader
-    ) else {
+    let Ok(mut executable) = Executable::<TestContextObject>::from_elf(&prog, loader) else {
         return;
     };
     if executable.verify::<RequisiteVerifier>().is_err() {
@@ -47,8 +44,7 @@ fuzz_target!(|prog: &[u8]| {
         vec![interp_mem_region],
         None
     );
-    let mut interp_call_frames =
-        vec![CallFrame::default(); executable.get_config().max_call_depth];
+    let mut interp_call_frames = vec![CallFrame::default(); executable.get_config().max_call_depth];
     #[allow(unused)]
     let (_interp_ins_count, interp_res) = interp_vm.execute_program(
         &executable,
@@ -58,7 +54,10 @@ fuzz_target!(|prog: &[u8]| {
     #[allow(unused)]
     let interp_final_pc = interp_vm.registers[11];
 
-    #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
+    #[cfg(all(
+        not(target_os = "windows"),
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     if executable.jit_compile().is_ok() {
         let mut jit_mem = vec![0u8; 1 << 16];
         let mut jit_context_object = TestContextObject::new(1 << 16);
@@ -117,8 +116,10 @@ fuzz_target!(|prog: &[u8]| {
             );
         }
     } else {
-        #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
+        #[cfg(all(
+            not(target_os = "windows"),
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
         panic!("JIT compilation failed for program that passed verification");
     }
-
 });

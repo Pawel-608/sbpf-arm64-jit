@@ -9,7 +9,11 @@
 extern crate solana_sbpf;
 extern crate test;
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 use solana_sbpf::{ebpf, memory_region::MemoryRegion, program::SBPFVersion};
 use solana_sbpf::{
     elf::Executable,
@@ -53,7 +57,11 @@ fn bench_init_interpreter_start(bencher: &mut Bencher) {
     });
 }
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 #[bench]
 fn bench_init_jit_start(bencher: &mut Bencher) {
     let mut file = File::open("tests/elfs/rodata_section_sbpfv0.so").unwrap();
@@ -82,7 +90,11 @@ fn bench_init_jit_start(bencher: &mut Bencher) {
     });
 }
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn bench_jit_vs_interpreter(
     bencher: &mut Bencher,
     assembly: &str,
@@ -144,7 +156,11 @@ fn bench_jit_vs_interpreter(
     );
 }
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 #[bench]
 fn bench_jit_vs_interpreter_address_translation(bencher: &mut Bencher) {
     bench_jit_vs_interpreter(
@@ -163,7 +179,11 @@ fn bench_jit_vs_interpreter_address_translation(bencher: &mut Bencher) {
     );
 }
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 static ADDRESS_TRANSLATION_STACK_CODE: &str = "
     add64 r10, 4096
     mov r1, r2
@@ -176,7 +196,11 @@ static ADDRESS_TRANSLATION_STACK_CODE: &str = "
     jlt r2, 0x10000, -8
     exit";
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 #[bench]
 fn bench_jit_vs_interpreter_address_translation_stack_fixed(bencher: &mut Bencher) {
     bench_jit_vs_interpreter(
@@ -191,7 +215,11 @@ fn bench_jit_vs_interpreter_address_translation_stack_fixed(bencher: &mut Benche
     );
 }
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 #[bench]
 fn bench_jit_vs_interpreter_address_translation_stack_dynamic(bencher: &mut Bencher) {
     bench_jit_vs_interpreter(
@@ -203,7 +231,11 @@ fn bench_jit_vs_interpreter_address_translation_stack_dynamic(bencher: &mut Benc
     );
 }
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 #[bench]
 fn bench_jit_vs_interpreter_empty_for_loop(bencher: &mut Bencher) {
     bench_jit_vs_interpreter(
@@ -221,7 +253,11 @@ fn bench_jit_vs_interpreter_empty_for_loop(bencher: &mut Bencher) {
     );
 }
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 #[bench]
 fn bench_jit_vs_interpreter_call_depth_fixed(bencher: &mut Bencher) {
     bench_jit_vs_interpreter(
@@ -251,7 +287,11 @@ fn bench_jit_vs_interpreter_call_depth_fixed(bencher: &mut Bencher) {
     );
 }
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 #[bench]
 fn bench_jit_vs_interpreter_call_depth_dynamic(bencher: &mut Bencher) {
     bench_jit_vs_interpreter(
@@ -279,7 +319,11 @@ fn bench_jit_vs_interpreter_call_depth_dynamic(bencher: &mut Bencher) {
     );
 }
 
-#[cfg(all(feature = "jit", not(target_os = "windows"), target_arch = "x86_64"))]
+#[cfg(all(
+    feature = "jit",
+    not(target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 #[bench]
 fn bench_mem_ldxdw_jit(bencher: &mut Bencher) {
     use solana_sbpf::assembler::assemble;

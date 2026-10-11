@@ -1,5 +1,9 @@
 #![allow(clippy::literal_string_with_formatting_args)]
-#![cfg(all(test, target_arch = "x86_64", not(target_os = "windows")))]
+#![cfg(all(
+    test,
+    any(target_arch = "x86_64", target_arch = "aarch64"),
+    not(target_os = "windows")
+))]
 
 use byteorder::{ByteOrder, LittleEndian};
 use solana_sbpf::{

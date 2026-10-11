@@ -63,7 +63,10 @@ fuzz_target!(|data: DumbFuzzData| {
     #[allow(unused)]
     let interp_final_pc = interp_vm.registers[11];
 
-    #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
+    #[cfg(all(
+        not(target_os = "windows"),
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     if executable.jit_compile().is_ok() {
         let mut jit_mem = data.mem.clone();
         let mut jit_context_object = TestContextObject::new(1 << 16);
@@ -119,7 +122,10 @@ fuzz_target!(|data: DumbFuzzData| {
             );
         }
     } else {
-        #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
+        #[cfg(all(
+            not(target_os = "windows"),
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
         panic!("JIT compilation failed for program that passed verification");
     }
 });
