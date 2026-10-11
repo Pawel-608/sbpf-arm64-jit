@@ -715,6 +715,19 @@ impl MemoryMapping {
         self.generate_access_violation(access_type, vm_addr, len)
     }
 
+    /// The host address of `len` bytes at `vm_addr` when the mapping holds
+    /// them as it stands; `None` when [`Self::map_with_access_violation_handler`]
+    /// has to decide (the handler may grow a region, or the access is an error).
+    #[inline(always)]
+    pub fn map_fast(&self, access_type: AccessType, vm_addr: u64, len: u64) -> Option<u64> {
+        debug_assert!(self.initialized);
+        if self.disable_address_translation {
+            return Some(vm_addr);
+        }
+        let (_index, region) = self.find_region(vm_addr)?;
+        region.vm_to_host(access_type, vm_addr, len)
+    }
+
     /// Loads `size_of::<T>()` bytes from the given address.
     pub fn load<T: Pod + Into<u64>>(&mut self, vm_addr: u64) -> ProgramResult {
         let len = mem::size_of::<T>() as u64;

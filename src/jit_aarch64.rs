@@ -37,7 +37,7 @@ use crate::{
         allocate_pages_pooled, flush_instruction_cache, free_pages_pooled, get_system_page_size,
         protect_pages, round_to_page_size, JitWriteGuard, PagePermissions,
     },
-    memory_region::MemoryMapping,
+    memory_region::{AccessType, MemoryMapping},
     program::BuiltinFunction,
     static_analysis::RegisterTraceEntry,
     vm::{get_runtime_environment_key, Config, ContextObject, EbpfVm, RuntimeEnvironmentSlot},
@@ -292,6 +292,12 @@ macro_rules! translation_functions {
                 vm_addr: u64,
                 program_result: *mut ProgramResult,
             ) -> TranslationResult {
+                // Most accesses land in a mapped region: read it without
+                // building a `ProgramResult`.
+                if let Some(host_addr) = unsafe { (*memory_mapping).map_fast(AccessType::Load, vm_addr, mem::size_of::<$T>() as u64) } {
+                    let value = unsafe { ptr::read_unaligned::<$T>(host_addr as *const $T) };
+                    return TranslationResult { is_err: 0, value: value as u64 };
+                }
                 match unsafe { (*memory_mapping).load::<$T>(vm_addr) } {
                     ProgramResult::Ok(value) => TranslationResult { is_err: 0, value },
                     err => {
@@ -307,6 +313,10 @@ macro_rules! translation_functions {
                 vm_addr: u64,
                 program_result: *mut ProgramResult,
             ) -> u64 {
+                if let Some(host_addr) = unsafe { (*memory_mapping).map_fast(AccessType::Store, vm_addr, mem::size_of::<$T>() as u64) } {
+                    unsafe { ptr::write_unaligned(host_addr as *mut $T, value as $T) };
+                    return 0;
+                }
                 match unsafe { (*memory_mapping).store::<$T>(value as $T, vm_addr) } {
                     ProgramResult::Ok(_) => 0,
                     err => {
